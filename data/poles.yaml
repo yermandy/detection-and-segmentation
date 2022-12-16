@@ -1,0 +1,7 @@
+path: ./datasets/poles-2022.12.14  # dataset root dir
+train: train.txt # train images (relative to 'path')
+val: val.txt # val images (relative to 'path')
+
+# Classes
+names: 
+  0: 'pole'

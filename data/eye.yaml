@@ -1,0 +1,8 @@
+path: ./datasets/eye  # dataset root dir
+train: train.txt # train images (relative to 'path')
+val: val.txt # val images (relative to 'path')
+
+# Classes
+names: 
+  0: 'front'
+  1: 'rear'
