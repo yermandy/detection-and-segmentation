@@ -273,7 +273,7 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None):
             conf = None if labels else ti[:, 6]  # check for confidence presence (label vs pred)
 
             if boxes.shape[1]:
-                if boxes.max() <= 1.01:  # if normalized with tolerance 0.01
+                if boxes.max() <= 1.01 + 9:  # if normalized with tolerance 0.01 + 9
                     boxes[[0, 2]] *= w  # scale to pixels
                     boxes[[1, 3]] *= h
                 elif scale < 1:  # absolute coords need scale if image scales

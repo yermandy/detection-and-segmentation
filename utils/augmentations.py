@@ -21,23 +21,36 @@ IMAGENET_STD = 0.229, 0.224, 0.225  # RGB standard deviation
 
 class Albumentations:
     # YOLOv5 Albumentations class (optional, only used if package is installed)
-    def __init__(self, size=640):
+    def __init__(self, size=640, no_clip=False):
         self.transform = None
+        self.no_clip = no_clip
         prefix = colorstr('albumentations: ')
         try:
             import albumentations as A
             check_version(A.__version__, '1.0.3', hard=True)  # version requirement
 
-            T = [
-                A.RandomResizedCrop(height=size, width=size, scale=(0.8, 1.0), ratio=(0.9, 1.11), p=0.0),
+            # transforms
+            T = []
+            if not no_clip:
+                # geometry transformation
+                T.append(A.RandomResizedCrop(height=size, width=size, scale=(0.8, 1.0), ratio=(0.9, 1.11), p=0.0))
+                
+            # color transformation
+            T.extend([
                 A.Blur(p=0.01),
                 A.MedianBlur(p=0.01),
                 A.ToGray(p=0.01),
                 A.CLAHE(p=0.01),
                 A.RandomBrightnessContrast(p=0.0),
                 A.RandomGamma(p=0.0),
-                A.ImageCompression(quality_lower=75, p=0.0)]  # transforms
-            self.transform = A.Compose(T, bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
+            ])  
+            
+            if not no_clip:
+                # geometry transformation
+                T.append(A.ImageCompression(quality_lower=75, p=0.0))
+                self.transform = A.Compose(T, bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
+            else:
+                self.transform = A.Compose(T)
 
             LOGGER.info(prefix + ', '.join(f'{x}'.replace('always_apply=False, ', '') for x in T if x.p))
         except ImportError:  # package not installed, skip
@@ -47,8 +60,11 @@ class Albumentations:
 
     def __call__(self, im, labels, p=1.0):
         if self.transform and random.random() < p:
-            new = self.transform(image=im, bboxes=labels[:, 1:], class_labels=labels[:, 0])  # transformed
-            im, labels = new['image'], np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
+            if self.no_clip:
+                return self.transform(image=im)['image'], labels
+            else:
+                new = self.transform(image=im, bboxes=labels[:, 1:], class_labels=labels[:, 0])  # transformed
+                im, labels = new['image'], np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
         return im, labels
 
 
@@ -149,7 +165,8 @@ def random_perspective(im,
                        scale=.1,
                        shear=10,
                        perspective=0.0,
-                       border=(0, 0)):
+                       border=(0, 0),
+                       no_clip=False):
     # torchvision.transforms.RandomAffine(degrees=(-10, 10), translate=(0.1, 0.1), scale=(0.9, 1.1), shear=(-10, 10))
     # targets = [cls, xyxy]
 
@@ -212,7 +229,9 @@ def random_perspective(im,
                 xy = xy[:, :2] / xy[:, 2:3] if perspective else xy[:, :2]  # perspective rescale or affine
 
                 # clip
-                new[i] = segment2box(xy, width, height)
+                # TODO verify for segmentation task
+                if not no_clip:
+                    new[i] = segment2box(xy, width, height)
 
         else:  # warp boxes
             xy = np.ones((n * 4, 3))
@@ -226,8 +245,9 @@ def random_perspective(im,
             new = np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T
 
             # clip
-            new[:, [0, 2]] = new[:, [0, 2]].clip(0, width)
-            new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
+            if not no_clip:
+                new[:, [0, 2]] = new[:, [0, 2]].clip(0, width)
+                new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
 
         # filter candidates
         i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.01 if use_segments else 0.10)

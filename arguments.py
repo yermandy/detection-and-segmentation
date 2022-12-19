@@ -87,6 +87,9 @@ def get_train_args(known=False):
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
+    
+    # My argments
+    parser.add_argument('--no-clip', action='store_true', help='do not clip bounding boxes (no clip augmentation)')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')

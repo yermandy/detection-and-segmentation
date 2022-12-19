@@ -115,8 +115,7 @@ def create_dataloader(path,
                       image_weights=False,
                       quad=False,
                       prefix='',
-                      shuffle=False,
-                      seed=0):
+                      shuffle=False):
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
@@ -141,7 +140,7 @@ def create_dataloader(path,
     sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
     generator = torch.Generator()
-    generator.manual_seed(6148914691236517205 + seed + RANK)
+    generator.manual_seed(6148914691236517205 + RANK)
     return loader(dataset,
                   batch_size=batch_size,
                   shuffle=shuffle and sampler is None,
@@ -449,17 +448,19 @@ class LoadImagesAndLabels(Dataset):
                  stride=32,
                  pad=0.0,
                  min_items=0,
-                 prefix=''):
+                 prefix='', 
+                 args=None):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
+        self.args = args
         self.image_weights = image_weights
         self.rect = False if image_weights else rect
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
         self.path = path
-        self.albumentations = Albumentations(size=img_size) if augment else None
+        self.albumentations = Albumentations(size=img_size, no_clip=self.args.no_clip) if augment else None
 
         try:
             f = []  # image files
@@ -684,11 +685,12 @@ class LoadImagesAndLabels(Dataset):
                                                  translate=hyp['translate'],
                                                  scale=hyp['scale'],
                                                  shear=hyp['shear'],
-                                                 perspective=hyp['perspective'])
+                                                 perspective=hyp['perspective'],
+                                                 no_clip=self.args.no_clip)
 
         nl = len(labels)  # number of labels
         if nl:
-            labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
+            labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=not self.args.no_clip, eps=1E-3)
 
         if self.augment:
             # Albumentations
@@ -714,6 +716,34 @@ class LoadImagesAndLabels(Dataset):
             # labels = cutout(img, labels, p=0.5)
             # nl = len(labels)  # update after cutout
 
+        if self.augment and self.args.no_clip:
+            def black_out_and_remove(img, labels):
+                # img has shape (3, h, w)
+                # labels have shape (n, 5)
+                cx, cy = labels[:, 1], labels[:, 2]
+                
+                # center of bounding box is out of image
+                mask = (cx > 1) | (cx < 0) | (cy > 1) | (cy < 0)
+                
+                x1, y1, x2, y2 = xywh2xyxy(labels[mask, 1:5]).clip(0, 1).T
+                
+                x1 = np.round(x1 * img.shape[1]).astype(int)
+                x2 = np.round(x2 * img.shape[1]).astype(int)
+                y1 = np.round(y1 * img.shape[0]).astype(int)
+                y2 = np.round(y2 * img.shape[0]).astype(int)
+                
+                for i in range(len(x1)):
+                    img[y1[i]:y2[i], x1[i]:x2[i]] = 0
+                    
+                labels = labels[~mask]
+                return img, labels
+            
+            # remove bboxes what have center out of image
+            img, labels = black_out_and_remove(img, labels)
+            
+            # update number of labels
+            nl = len(labels)
+            
         labels_out = torch.zeros((nl, 6))
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
@@ -787,8 +817,9 @@ class LoadImagesAndLabels(Dataset):
 
         # Concat/clip labels
         labels4 = np.concatenate(labels4, 0)
-        for x in (labels4[:, 1:], *segments4):
-            np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
+        if not self.args.no_clip:
+            for x in (labels4[:, 1:], *segments4):
+                np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
         # img4, labels4 = replicate(img4, labels4)  # replicate
 
         # Augment
@@ -801,7 +832,8 @@ class LoadImagesAndLabels(Dataset):
                                            scale=self.hyp['scale'],
                                            shear=self.hyp['shear'],
                                            perspective=self.hyp['perspective'],
-                                           border=self.mosaic_border)  # border to remove
+                                           border=self.mosaic_border, # border to remove
+                                           no_clip=self.args.no_clip)  
 
         return img4, labels4
 
@@ -864,8 +896,9 @@ class LoadImagesAndLabels(Dataset):
         c = np.array([xc, yc])  # centers
         segments9 = [x - c for x in segments9]
 
-        for x in (labels9[:, 1:], *segments9):
-            np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
+        if not self.args.no_clip:
+            for x in (labels9[:, 1:], *segments9):
+                np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
         # img9, labels9 = replicate(img9, labels9)  # replicate
 
         # Augment
@@ -878,7 +911,8 @@ class LoadImagesAndLabels(Dataset):
                                            scale=self.hyp['scale'],
                                            shear=self.hyp['shear'],
                                            perspective=self.hyp['perspective'],
-                                           border=self.mosaic_border)  # border to remove
+                                           border=self.mosaic_border, # border to remove
+                                           no_clip=self.args.no_clip)  
 
         return img9, labels9
 
