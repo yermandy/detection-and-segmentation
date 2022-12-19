@@ -125,7 +125,8 @@ def run(
         callbacks=Callbacks(),
         compute_loss=None,
         plot_num_batches=3,
-):    
+        no_clip=False
+):
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -172,6 +173,11 @@ def run(
         model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
         pad, rect = (0.0, False) if task == 'speed' else (0.5, pt)  # square inference for benchmarks
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
+        
+        # TODO refactor !!!
+        args = argparse.Namespace()
+        args.no_clip = no_clip
+        
         dataloader = create_dataloader(data[task],
                                        imgsz,
                                        batch_size,
@@ -180,7 +186,8 @@ def run(
                                        pad=pad,
                                        rect=rect,
                                        workers=workers,
-                                       prefix=colorstr(f'{task}: '))[0]
+                                       prefix=colorstr(f'{task}: '),
+                                       args=args)[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)

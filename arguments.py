@@ -46,6 +46,10 @@ def get_test_args():
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    
+    # My argments
+    parser.add_argument('--no-clip', action='store_true', help='do not clip bounding boxes (no clip augmentation)')
+    
     if is_terminal():
         return parser.parse_args()
     return parser.parse_args("")
