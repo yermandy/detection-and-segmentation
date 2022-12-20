@@ -94,6 +94,7 @@ def get_train_args(known=False):
     
     # My argments
     parser.add_argument('--no-clip', action='store_true', help='do not clip bounding boxes (no clip augmentation)')
+    parser.add_argument('--save-all-best', action='store_true', help='save all best checkpoints')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
