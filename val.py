@@ -174,10 +174,6 @@ def run(
         pad, rect = (0.0, False) if task == 'speed' else (0.5, pt)  # square inference for benchmarks
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
         
-        # TODO refactor !!!
-        args = argparse.Namespace()
-        args.no_clip = no_clip
-        
         dataloader = create_dataloader(data[task],
                                        imgsz,
                                        batch_size,
@@ -187,7 +183,7 @@ def run(
                                        rect=rect,
                                        workers=workers,
                                        prefix=colorstr(f'{task}: '),
-                                       args=args)[0]
+                                       args=argparse.Namespace(no_clip=no_clip))[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
